@@ -1,0 +1,26 @@
+[package]
+name = "tonic_learn"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "redis-server"
+path = "src/redis/server.rs"
+
+[[bin]]
+name = "streaming-server"
+path = "src/stream/server.rs"
+
+[dependencies]
+redis = "0.24.0"
+
+tokio = { version = "1.32.0", features = ["full"] }
+tokio-stream = { version = "0.1", optional = true }
+
+prost = "0.12"
+prost-types = "0.12"
+
+tonic="0.11"
+
+[build-dependencies]
+tonic-build = { version = "0.11", features = ["prost"] }
