@@ -1,7 +1,7 @@
 
 use std::time::Duration;
 
-use redis::Commands;
+use redis::AsyncCommands;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::{Stream, StreamExt};
@@ -13,13 +13,18 @@ async fn main() {
 
     tokio::spawn(async move {
         let client = redis::Client::open("redis://127.0.0.1/").unwrap();
-        let mut con = client.get_connection().unwrap();
+        let mut con = client.get_async_connection().await.unwrap();
 
-        let mut pubsub = con.as_pubsub();
-        pubsub.subscribe(&channel_name).unwrap();
+        let mut pubsub = con.into_pubsub();
+        pubsub.subscribe(&channel_name).await.unwrap();
+        let mut stream = pubsub.on_message();
 
         loop {
-            let msg = pubsub.get_message().unwrap();
+            let Some(msg) = stream.next().await else {
+                println!("nothing");
+                continue;
+            };
+            println!("received message");
             
             match tx.send("hello").await {
                 Ok(_) => {
@@ -47,14 +52,19 @@ async fn main() {
 
 
     let client = redis::Client::open("redis://127.0.0.1/").unwrap();
-    let mut con = client.get_connection().unwrap();
+    let mut con = client.get_async_connection().await.unwrap();
         
     let channel = "hello_1";
 
     
     // tokio::spawn(async move {
         while let Some(item) = stream.next().await {
-            let success:  bool = con.publish(channel, item).unwrap();
+            let success:  bool = con.publish(channel, item).await.unwrap();
+            if success {
+                println!("publish ok");
+            } else {
+                println!("publish failed :(");
+            }
         }
         println!("\tclient disconnected");
     // });

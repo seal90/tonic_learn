@@ -7,10 +7,11 @@ use tokio_stream::{Stream, StreamExt};
 use tonic::codegen::tokio_stream;
 use tonic::{transport::Server, Request, Response, Status};
 
+use redis::AsyncCommands;
+
 use hello_world::redis_operate_service_server::{ RedisOperateService, RedisOperateServiceServer};
 use hello_world::{Message, SubscribeRequest, PublishRequest, PublishResponse};
 
-use redis::{Commands, PubSubCommands};
 
 pub mod hello_world {
     tonic::include_proto!("learn.tonic.redis.sdk.proto");
@@ -39,13 +40,14 @@ impl RedisOperateService for MyGreeter {
         // 启动独立的tokio任务来监听Redis消息
         tokio::spawn(async move {
             let client = redis::Client::open("redis://127.0.0.1/").unwrap();
-            let mut con = client.get_connection().unwrap();
+            let mut con = client.get_async_connection().await.unwrap();
 
-            let mut pubsub = con.as_pubsub();
-            pubsub.subscribe(&channel_name).unwrap();
+            let mut pubsub = con.into_pubsub();
+            pubsub.subscribe(&channel_name).await.unwrap();
+            let mut stream = pubsub.on_message();
 
             loop {
-                let msg = pubsub.get_message().unwrap();
+                let msg = stream.next().await.unwrap();
                 let payload: String = msg.get_payload().unwrap();
                 let reply = Message {
                     channel: msg.get_channel_name().to_string(),
@@ -65,17 +67,17 @@ impl RedisOperateService for MyGreeter {
 
         });
 
-        tokio::spawn(async move {
-            loop {
-                let recv = rx.recv().await;
-                println!("receive ok, data: {:?}", recv.unwrap());
-            }
-        });
+        // tokio::spawn(async move {
+        //     loop {
+        //         let recv = rx.recv().await;
+        //         println!("receive ok, data: {:?}", recv.unwrap());
+        //     }
+        // });
 
-        let (tx_1, rx_1) = mpsc::channel(2);
+        // let (tx_1, rx_1) = mpsc::channel(2);
 
         // Ok(tonic::Response::new(Box::pin(tokio_stream::wrappers::ReceiverStream::new(rx) as Self::SubscribeStream)))
-        Ok(tonic::Response::new(Box::pin(tokio_stream::wrappers::ReceiverStream::new(rx_1)) as Self::SubscribeStream))
+        Ok(tonic::Response::new(Box::pin(tokio_stream::wrappers::ReceiverStream::new(rx)) as Self::SubscribeStream))
         // Ok(tonic::Response::new(Box::pin(ReceiverStream::new(rx1)) as Self::SubscribeStream))
 
     }
@@ -86,14 +88,14 @@ impl RedisOperateService for MyGreeter {
     ) -> std::result::Result<tonic::Response<PublishResponse>, tonic::Status> {
 
         let client = redis::Client::open("redis://127.0.0.1/").unwrap();
-        let mut con = client.get_connection().unwrap();
+        let mut con = client.get_async_connection().await.unwrap();
             
         let req = request.into_inner();
         let channel = req.channel;
         let data = req.data;
 
         // let mut conn_lock = self.conn.lock().unwrap();
-        let success = con.publish(channel, data).unwrap();
+        let success = con.publish(channel, data).await.unwrap();
         Ok(tonic::Response::new(PublishResponse{success: success}))
     }
     
