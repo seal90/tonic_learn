@@ -33,7 +33,7 @@ impl RedisOperateService for MyGreeter {
         request: tonic::Request<SubscribeRequest>,
     ) -> std::result::Result<tonic::Response<Self::SubscribeStream>, tonic::Status> {
 
-        let (tx, rx) = mpsc::channel(2);
+        let (tx, mut rx) = mpsc::channel(2);
         let channel_name = request.into_inner().channel;
 
         // 启动独立的tokio任务来监听Redis消息
@@ -65,8 +65,17 @@ impl RedisOperateService for MyGreeter {
 
         });
 
+        tokio::spawn(async move {
+            loop {
+                let recv = rx.recv().await;
+                println!("receive ok, data: {:?}", recv.unwrap());
+            }
+        });
+
+        let (tx_1, rx_1) = mpsc::channel(2);
+
         // Ok(tonic::Response::new(Box::pin(tokio_stream::wrappers::ReceiverStream::new(rx) as Self::SubscribeStream)))
-        Ok(tonic::Response::new(Box::pin(tokio_stream::wrappers::ReceiverStream::new(rx)) as Self::SubscribeStream))
+        Ok(tonic::Response::new(Box::pin(tokio_stream::wrappers::ReceiverStream::new(rx_1)) as Self::SubscribeStream))
         // Ok(tonic::Response::new(Box::pin(ReceiverStream::new(rx1)) as Self::SubscribeStream))
 
     }
